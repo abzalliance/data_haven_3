@@ -232,6 +232,7 @@
 
     // Додаю масив платформ
     let platforms = [];
+    // Прибираю obstacles та clouds
     const PLATFORM_MIN_Y = 120;
     const PLATFORM_MAX_Y = 320;
     // Замість const PLATFORM_WIDTH і PLATFORM_GAP — let, щоб змінювати під час гри
@@ -245,6 +246,8 @@
     // ========== LOAD IMAGES ==========
     const mooseImg = new Image();
     mooseImg.src = "moose.webp";
+    const mooseLeftImg = new Image();
+    mooseLeftImg.src = "moose_left.webp";
     const acornImg = new Image();
     acornImg.src = "acorns.webp";
     const platformImg = new Image();
@@ -278,64 +281,147 @@
     // ========== GAME OBJECTS ==========
     function resetGame() {
       moose = {
-        x: W*0.15,
-        y: 0, // буде виставлено на платформу
+        x: W*0.5 - MOOSE_W/2, // по центру
+        y: 0, // тимчасово
         vy: 0,
-        alive: true
+        vx: 0, // горизонтальна швидкість
+        ax: 0, // горизонтальне прискорення
+        alive: true,
+        onPlatform: true, // встановлюємо, що лось на платформі при старті
+        justJumped: false // додаю флаг для запобігання скидання vy після стрибка
       };
       acorns = [];
-      clouds = [];
+      // Прибираю obstacles та clouds
       platformOffset = 0;
       mooseStep = 0;
       platforms = [];
       // Скидаємо складність
       platformWidth = PLATFORM_WIDTH_START;
       platformGap = PLATFORM_GAP_START;
-      // Створюємо стартові платформи
-      let px = 0;
-      for (let i = 0; px < W + 2*platformWidth; i++) {
-        let py = i % 2 === 0 ? H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET : H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET-100-Math.random()*100;
-        platforms.push({x: px, y: py});
-        px += platformWidth + platformGap;
+      // Створюємо стартові платформи (знизу вгору)
+      let py = H - PLATFORM_HEIGHT - 40; // найнижча платформа завжди видима
+      // Створюємо більше платформ заздалегідь
+      for (let i = 0; py > -platformGap * 3; i++) { // збільшено кількість платформ
+        let px = W*0.5 - platformWidth/2 + (Math.random()-0.5)*W*0.25;
+        platforms.push({x: px, y: py, width: platformWidth});
+        py -= platformGap;
       }
-      // Ставимо лося на першу платформу
-      moose.y = platforms[0].y - MOOSE_H + 80;
+      // Найнижча платформа — перша у масиві
+      let lowest = platforms[0];
+      moose.y = lowest.y - MOOSE_H + 80; // правильне розміщення на платформі
       score = 0;
       gameOver = false;
       scoreBox.style.display = '';
-      // highscoreBox.style.display = '';
       scoreSpan.textContent = score;
       highscoreSpan.textContent = highscore;
     }
 
-    // Додаю spawnPlatform для динамічного додавання платформ справа
+    // Додаю spawnPlatform для динамічного додавання платформ зверху
     function spawnPlatform() {
       // Остання платформа
       const last = platforms[platforms.length-1];
-      let px = last.x + (last.width || platformWidth) + platformGap;
-      // Випадкова висота (чергування, як у resetGame)
-      let minY = H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET-120;
-      let maxY = H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET;
-      let py = minY + Math.random() * (maxY - minY);
-      // Випадкова ширина (але не менше PLATFORM_WIDTH_MIN)
+      let py = last.y - platformGap;
+      let px = W*0.5 - platformWidth/2 + (Math.random()-0.5)*W*0.4;
       let w = Math.max(PLATFORM_WIDTH_MIN, platformWidth * (0.7 + Math.random()*0.5));
       platforms.push({x: px, y: py, width: w});
     }
 
     // ========== SPAWNERS ==========
     function spawnAcorn() {
-      // Вибираємо платформу, яка ще не видна гравцю (x > W)
-      let candidates = platforms.filter(p => p.x > W);
+      // Вибираємо платформу, яка ЗА ЕКРАНОМ (вгорі), щоб користувач їх бачив заздалегідь
+      let candidates = platforms.filter(p => p.y < -50 && p.y > -400);
       if (candidates.length === 0) return;
       let p = candidates[Math.floor(Math.random()*candidates.length)];
-      let y = p.y - 60; // вище платформи
+      
+      // Логіка розподілу жолудів
+      let acornType = Math.random();
+      let type, points, filter, size;
+      
+      if (acornType < 0.15) {
+        // Чорні жолуді - знімають очки (15%)
+        type = 'death';
+        points = -2; // знімають 2 очки
+        filter = 'brightness(0.2) contrast(2) sepia(1) hue-rotate(0deg) saturate(0)'; // чорний
+        size = 55;
+      } else if (acornType < 0.25) {
+        // Золоті жолуді - +3 очки (10%)
+        type = 'gold';
+        points = 3;
+        filter = 'brightness(1.2) contrast(1.1) sepia(1) hue-rotate(45deg) saturate(3)'; // золотий
+        size = 70;
+      } else {
+        // Звичайні жолуді - +1 очко (75%)
+        type = 'normal';
+        points = 1;
+        filter = 'brightness(0.8) contrast(1.1) sepia(0.8) hue-rotate(25deg) saturate(1.5)'; // коричневий
+        size = 60;
+      }
+      
+      let x = p.x + 80 + Math.random()*((p.width || platformWidth)-160);
       acorns.push({
-        x: p.x + 60 + Math.random()*((p.width || platformWidth)-120),
-        y: y,
-        w: 70, // збільшено жолудь
-        h: 70,
-        collected: false
+        x: x,
+        y: p.y - 60,
+        w: size,
+        h: size,
+        type: type,
+        points: points,
+        filter: filter,
+        collected: false,
+        sparkle: type === 'gold' ? 0 : null // анімація для золотих
       });
+      
+      console.log('Created', type, 'acorn at:', x, p.y - 60);
+    }
+
+    // Додаю функцію для створення групи жолудів
+    function spawnAcornCluster() {
+      // Вибираємо платформу ЗА ЕКРАНОМ
+      let candidates = platforms.filter(p => p.y < -100 && p.y > -350);
+      if (candidates.length === 0) return;
+      let p = candidates[Math.floor(Math.random()*candidates.length)];
+      
+      // Створюємо 2-4 жолуді на одній платформі
+      let numAcorns = 2 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < numAcorns; i++) {
+        let x = p.x + 100 + i * 80 + Math.random() * 40;
+        if (x > p.x + (p.width || platformWidth) - 100) break;
+        
+        let acornType = Math.random();
+        let type, points, filter, size;
+        
+        if (acornType < 0.08) {
+          // Менше чорних у кластері (8%)
+          type = 'death';
+          points = -2; // знімають 2 очки
+          filter = 'brightness(0.2) contrast(2) sepia(1) hue-rotate(0deg) saturate(0)'; // чорний
+          size = 55;
+        } else if (acornType < 0.18) {
+          // Трохи більше золотих у кластері (10%)
+          type = 'gold';
+          points = 3;
+          filter = 'brightness(1.2) contrast(1.1) sepia(1) hue-rotate(45deg) saturate(3)'; // золотий
+          size = 70;
+        } else {
+          // Звичайні (82%)
+          type = 'normal';
+          points = 1;
+          filter = 'brightness(0.8) contrast(1.1) sepia(0.8) hue-rotate(25deg) saturate(1.5)'; // коричневий
+          size = 60;
+        }
+        
+        acorns.push({
+          x: x,
+          y: p.y - 60,
+          w: size,
+          h: size,
+          type: type,
+          points: points,
+          filter: filter,
+          collected: false,
+          sparkle: type === 'gold' ? Math.random() * Math.PI * 2 : null
+        });
+      }
+      console.log('Created acorn cluster with', numAcorns, 'acorns');
     }
 
     // ========== DRAW ==========
@@ -353,16 +439,6 @@
       for (let p of platforms) {
         ctx.drawImage(platformImg, p.x, p.y, p.width || platformWidth, PLATFORM_HEIGHT);
       }
-      // Хмарки
-      for (let c of clouds) {
-        ctx.save();
-        ctx.globalAlpha = c.opacity;
-        ctx.beginPath();
-        ctx.ellipse(c.x, c.y, c.w, c.h, 0, 0, 2*Math.PI);
-        ctx.fillStyle = '#fff';
-        ctx.fill();
-        ctx.restore();
-      }
       // Зміна часу доби: накладаємо напівпрозорий шар
       let dayPhase = 0.5 + 0.5 * Math.sin(t/22); // від 0 до 1
       // Від блакитного до темно-синього
@@ -372,17 +448,61 @@
       ctx.fillStyle = `rgba(${r},${g},${b},0.22)`;
       ctx.fillRect(0,0,W,H);
     }
+
     function drawMoose() {
       ctx.save();
       ctx.translate(moose.x + MOOSE_W/2, moose.y + MOOSE_H/2);
-      // Прибрано похитування (анімацію бігу)
-      ctx.rotate(Math.max(-0.5, Math.min(0.5, moose.vy/18)));
-      ctx.drawImage(mooseImg, -MOOSE_W/2, -MOOSE_H/2, MOOSE_W, MOOSE_H);
+      // Плавна анімація обертання
+      let targetRotation = Math.max(-0.5, Math.min(0.5, moose.vy/18));
+      ctx.rotate(targetRotation);
+      // Вибір спрайта залежно від напрямку
+      let img = mooseImg;
+      if (moose.vx < -0.5) img = mooseLeftImg;
+      ctx.drawImage(img, -MOOSE_W/2, -MOOSE_H/2, MOOSE_W, MOOSE_H);
       ctx.restore();
     }
     function drawAcorns() {
       for (let a of acorns) {
-        if (!a.collected) ctx.drawImage(acornImg, a.x, a.y, a.w, a.h);
+        if (!a.collected) {
+          let t = Date.now() / 1000;
+          let bounce = Math.sin(t * 3 + a.x * 0.01) * 3;
+          
+          ctx.save();
+          
+          if (a.type === 'gold') {
+            // Анімація блиску для золотих жолудів
+            a.sparkle += 0.1;
+            let sparkleIntensity = (Math.sin(a.sparkle) + 1) / 2;
+            
+            // Зовнішнє свічення
+            ctx.shadowColor = '#FFD700';
+            ctx.shadowBlur = 15 + sparkleIntensity * 10;
+          } else if (a.type === 'death') {
+            // Темне свічення для чорних (прибираю червоне)
+            ctx.shadowColor = '#000000';
+            ctx.shadowBlur = 5;
+          }
+          
+          // Застосовуємо фільтр через CSS filter
+          ctx.filter = a.filter;
+          
+          // Малюємо жолудь (acornImg замість mooseImg)
+          ctx.drawImage(acornImg, a.x, a.y + bounce, a.w, a.h);
+          
+          // Скидаємо фільтр
+          ctx.filter = 'none';
+          ctx.shadowBlur = 0;
+          
+          // Додаткові ефекти для золотих жолудів
+          if (a.type === 'gold') {
+            let sparkleIntensity = (Math.sin(a.sparkle) + 1) / 2;
+            // Блиск
+            ctx.fillStyle = `rgba(255, 255, 255, ${sparkleIntensity * 0.6})`;
+            ctx.fillRect(a.x + a.w*0.3, a.y + bounce + a.h*0.3, a.w*0.4, a.h*0.4);
+          }
+          
+          ctx.restore();
+        }
       }
     }
     function draw() {
@@ -397,45 +517,120 @@
       let onPlatform = false;
       let platformY = null;
       for (let p of platforms) {
-        // Суворіша перевірка по x: тільки якщо "ноги" лося реально на платформі
+        // ВИПРАВЛЕНА ЛОГІКА: дозволяємо приземлення зверху незалежно від vy
         if (
           moose.x + MOOSE_W*0.8 > p.x + 20 && moose.x + MOOSE_W*0.2 < p.x + (p.width || platformWidth) - 20 &&
-          moose.y + MOOSE_H >= p.y && moose.y + MOOSE_H <= p.y + 120 &&
-          moose.vy >= 0
+          moose.y + MOOSE_H >= p.y && moose.y + MOOSE_H <= p.y + 80 // прибрав умову moose.vy >= 0
         ) {
           onPlatform = true;
           platformY = p.y;
           break;
         }
       }
-      if (!onPlatform) {
-        moose.y += moose.vy;
-        moose.vy += GRAVITY;
-      } else {
+      moose.onPlatform = onPlatform;
+      // === Вертикальна фізика ===
+      if (moose.onPlatform && !moose.justJumped) {
         moose.vy = 0;
-        // Плавне приземлення
-        moose.y += (platformY - MOOSE_H + 80 -moose.y) * 0.5;
+        if (platformY !== null) {
+          moose.y = platformY - MOOSE_H + 80; // синхронізуємо з початковою позицією
+        }
+      } else {
+        moose.vy += GRAVITY;
+        moose.y += moose.vy;
+        // Скидаємо флаг стрибка, якщо лось почав падати
+        if (moose.vy > 0) {
+          moose.justJumped = false;
+        }
       }
-      // Додаю перевірку програшу
-      if (!onPlatform && moose.y > H && !gameOver) {
-        gameOver = true;
-        gameStarted = false;
-        showOverlay(true);
-        return;
+      // --- Плавний горизонтальний рух ---
+      const ACCEL = 0.8; // зменшено для плавності
+      const MAX_VX = 5; // зменшено для плавності
+      const FRICTION = 0.92; // збільшено для плавності
+      if (leftPressed && !rightPressed) {
+        moose.ax = -ACCEL;
+      } else if (rightPressed && !leftPressed) {
+        moose.ax = ACCEL;
+      } else {
+        moose.ax = 0;
+      }
+      moose.vx += moose.ax;
+      // Обмеження максимальної швидкості
+      if (moose.vx > MAX_VX) moose.vx = MAX_VX;
+      if (moose.vx < -MAX_VX) moose.vx = -MAX_VX;
+      // Тертя, якщо не натиснуто стрілки
+      if (!leftPressed && !rightPressed) moose.vx *= FRICTION;
+      // Дуже маленькі значення обнуляємо
+      if (Math.abs(moose.vx) < 0.05) moose.vx = 0; // зменшено поріг
+      moose.x += moose.vx;
+      // Обмеження по краях екрану
+      if (moose.x < 0) moose.x = 0;
+      if (moose.x > W - MOOSE_W) moose.x = W - MOOSE_W;
+
+      // Додаю перевірку програшу, якщо лось не на платформі і впав нижче всіх платформ
+      if (!moose.onPlatform && moose.vy > 0) {
+        // Знаходимо найнижчу платформу
+        let lowestPlatformY = Math.max(...platforms.map(p => p.y));
+        if (moose.y + MOOSE_H > lowestPlatformY + PLATFORM_HEIGHT) {
+          if (!gameOver) {
+            gameOver = true;
+            gameStarted = false;
+            showOverlay(true);
+            return;
+          }
+        }
       }
       // Динамічна складність: RUN_SPEED зростає з часом
       let seconds = Math.floor((Date.now() - gameStartTime) / 1000);
-      let speed = 3.2 + Math.min(2, seconds * 0.04); // максимум +2 до швидкості
-      for (let p of platforms) p.x -= speed;
+      let speed = 1.5 + Math.min(1, seconds * 0.02); // максимум +1 до швидкості
+
+      // ====== Автоматичний рух камери вгору після 5 секунд ======
+      if (seconds > 5) {
+        // Прискорення камери кожні 10 секунд
+        let speedBoosts = Math.floor((seconds - 5) / 10); // кожні 10 секунд +1 boost
+        let cameraSpeed = 0.3 + speedBoosts * 0.5; // кожен boost додає 0.5 до швидкості
+        
+        // Рухаємо всі об'єкти вниз (камера вгору)
+        for (let p of platforms) p.y += cameraSpeed;
+        for (let a of acorns) a.y += cameraSpeed;
+        
+        console.log('Camera speed:', cameraSpeed, 'Speed boosts:', speedBoosts);
+      }
+
+      // ====== Перевірка, чи камера "з'їла" лося ======
+      if (moose.y > H - 50) { // якщо лось майже на дні екрана
+        if (!gameOver) {
+          console.log('Camera caught the moose - game over!');
+          gameOver = true;
+          gameStarted = false;
+          showOverlay(true);
+          return;
+        }
+      }
+
+      // ====== Камера: якщо лось піднявся вище певної межі, рухаємо всі об'єкти вниз =====
+      let cameraY = H*0.35;
+      while (moose.y < cameraY) {
+        let dy = cameraY - moose.y;
+        moose.y = cameraY;
+        for (let p of platforms) p.y += dy;
+        for (let a of acorns) a.y += dy;
+        // Можна додати рух хмар, якщо потрібно
+      }
+
+      // Перевірка збору жолудів
       for (let a of acorns) {
-        a.x -= speed;
         if (!a.collected &&
           moose.x + MOOSE_W > a.x && moose.x < a.x + a.w &&
           moose.y + MOOSE_H > a.y && moose.y < a.y + a.h) {
           a.collected = true;
-          score++;
+          
+          // Всі жолуді дають/знімають очки
+          score += a.points;
+          // Запобігаємо від'ємному рахунку
+          if (score < 0) score = 0;
+          
+          console.log('Collected', a.type, 'acorn, points:', a.points, 'total:', score);
           scoreSpan.textContent = score;
-          // Оновлюємо рекорд
           if (score > highscore) {
             highscore = score;
             highscoreSpan.textContent = highscore;
@@ -444,26 +639,24 @@
         }
       }
       // Видалити старі жолуді
-      acorns = acorns.filter(a => a.x > -a.w || !a.collected);
+      acorns = acorns.filter(a => a.y < H + a.h && !a.collected);
 
       // ====== Додаю нескінченну генерацію платформ =====
-      // Якщо остання платформа правіше екрана менше ніж на 1 платформу — додаємо нову
-      while (platforms.length && (platforms[platforms.length-1].x < W + (platforms[platforms.length-1].width || platformWidth))) {
+      // Якщо остання платформа вище екрана менше ніж на 2 platformGap — додаємо нову
+      while (platforms.length && (platforms[platforms.length-1].y > -platformGap * 2)) {
         spawnPlatform();
       }
-      // Видаляємо старі платформи, які повністю вийшли за лівий край
-      while (platforms.length && platforms[0].x < -(platforms[0].width || platformWidth)) {
+      // Видаляємо старі платформи, які повністю вийшли за низ
+      while (platforms.length && platforms[0].y > H + PLATFORM_HEIGHT) {
         platforms.shift();
       }
       // === Динамічна складність ===
-      // Зменшуємо ширину платформи і збільшуємо gap з часом (або з очками)
       let t = Math.floor((Date.now() - gameStartTime) / 1000);
-      let wave = 0.5 + 0.5 * Math.sin(t/18); // хвиля від 0 до 1
+      let wave = 0.5 + 0.5 * Math.sin(t/18);
       platformWidth = Math.max(
         PLATFORM_WIDTH_MIN,
         PLATFORM_WIDTH_START - t*6*wave - score*1.5*wave
       );
-      // Обмежуємо platformGap максимальною досяжною відстанню
       let maxGap = Math.min(getMaxJumpDistance(), PLATFORM_GAP_MAX);
       platformGap = Math.min(
         maxGap,
@@ -493,11 +686,18 @@
     function gameLoop(ts) {
       // Гра малюється завжди, але оновлення лише якщо активна
       if (gameStarted && !gameOver) {
-        // Спавн жолудя раз на 1.2-2.2 секунди
-        if (!lastAcornTime || ts - lastAcornTime > 1200 + Math.random()*1000) {
+        // Спавн одиночного жолудя раз на 800-1500мс
+        if (!lastAcornTime || ts - lastAcornTime > 800 + Math.random()*700) {
           spawnAcorn();
           lastAcornTime = ts;
         }
+        
+        // Спавн кластера жолудів раз на 3-5 секунд
+        if (!window.lastAcornClusterTime || ts - window.lastAcornClusterTime > 3000 + Math.random()*2000) {
+          spawnAcornCluster();
+          window.lastAcornClusterTime = ts;
+        }
+        
         update();
       }
       draw();
@@ -507,27 +707,18 @@
 
     // ========== CONTROLS ==========
     function flap() {
+      console.log('flap() called, gameStarted:', gameStarted, 'gameOver:', gameOver, 'onPlatform:', moose?.onPlatform);
       if(!gameStarted || gameOver) return;
-      // Можна стрибати тільки якщо лось на платформі
-      let onPlatform = false;
-      for (let p of platforms) {
-        if (
-          moose.x + MOOSE_W*0.8 > p.x + 20 && moose.x + MOOSE_W*0.2 < p.x + (p.width || platformWidth) - 20 &&
-          moose.y + MOOSE_H >= p.y && moose.y + MOOSE_H <= p.y + 120
-        ) {
-          onPlatform = true;
-          break;
-        }
-      }
-      if (onPlatform) {
-        moose.vy = FLAP;
-        console.log('FLAP!');
-      }
+      // Дозволяємо стрибати завжди (не тільки на платформі)
+      moose.vy = FLAP;
+      moose.justJumped = true; // встановлюємо флаг стрибка
+      console.log('FLAP! vy set to:', FLAP, 'justJumped:', true);
     }
-    // більш надійна обробка Space і стрілки вгору
-    document.addEventListener('keydown', function(e) {
-      console.log('keydown', e.key, e.code, e.keyCode, document.activeElement);
-      // keyCode 32 — це пробіл; додано 'Spacebar' для старих браузерів
+    let leftPressed = false, rightPressed = false;
+
+    // Прибираю дублікати обробників і залишаю тільки один надійний
+    function handleKeyDown(e) {
+      console.log('Key pressed:', e.key, e.code, e.keyCode);
       if (
         e.keyCode === 32 ||
         e.code === 'Space' ||
@@ -536,14 +727,50 @@
         e.key === 'ArrowUp'
       ) {
         e.preventDefault();
+        e.stopPropagation();
+        console.log('Space detected, gameOver:', gameOver, 'gameStarted:', gameStarted);
         if (gameOver) {
           startBtn.click();
         } else if (gameStarted) {
           flap();
         }
+        return false;
+      }
+      if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') {
+        leftPressed = true;
+        if (gameStarted && !gameOver) moose.vx = -6;
+      }
+      if (e.code === 'ArrowRight' || e.key === 'ArrowRight') {
+        rightPressed = true;
+        if (gameStarted && !gameOver) moose.vx = 6;
+      }
+    }
+
+    // Додаю обробники на різні елементи для максимальної надійності
+    document.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.body.addEventListener('keydown', handleKeyDown, true);
+
+    document.addEventListener('keyup', function(e) {
+      if (e.code === 'ArrowLeft' || e.key === 'ArrowLeft') {
+        leftPressed = false;
+        if (rightPressed && gameStarted && !gameOver) {
+          moose.vx = 6;
+        } else if (gameStarted && !gameOver) {
+          moose.vx = 0;
+        }
+      }
+      if (e.code === 'ArrowRight' || e.key === 'ArrowRight') {
+        rightPressed = false;
+        if (leftPressed && gameStarted && !gameOver) {
+          moose.vx = -6;
+        } else if (gameStarted && !gameOver) {
+          moose.vx = 0;
+        }
       }
     });
     canvas.addEventListener('mousedown', function(e) {
+      e.preventDefault();
       if (gameOver) {
         startBtn.click();
       } else if (gameStarted) {
@@ -551,6 +778,7 @@
       }
     });
     canvas.addEventListener('touchstart', function(e) {
+      e.preventDefault();
       if (gameOver) {
         startBtn.click();
       } else if (gameStarted) {
@@ -570,6 +798,23 @@
     nicknameInputMain.addEventListener('input', function() {
       nickname = nicknameInputMain.value.trim();
       nicknameCurrent.textContent = nickname || 'Player';
+    });
+    // Додаю обробник keydown для input, щоб пробіл працював навіть у фокусі
+    nicknameInputMain.addEventListener('keydown', function(e) {
+      if (
+        e.keyCode === 32 ||
+        e.code === 'Space' ||
+        e.code === 'Spacebar' ||
+        e.key === ' ' ||
+        e.key === 'ArrowUp'
+      ) {
+        e.preventDefault();
+        if (gameOver) {
+          startBtn.click();
+        } else if (gameStarted) {
+          flap();
+        }
+      }
     });
 
     function showOverlay(isGameOver) {
@@ -606,8 +851,8 @@
       gameOver = false;
       lastAcornTime = 0;
       gameStartTime = Date.now();
-      document.activeElement.blur();
-      document.body.focus();
+      document.activeElement.blur(); // Додаю зняття фокусу з input
+      document.body.focus(); // Фокусую body для прийому подій
     };
 
     resetGame();
