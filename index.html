@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flappy Moose: Acorn Adventure</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      background: #222;
+      font-family: 'Poppins', 'Arial', sans-serif;
+      user-select: none;
+    }
+    #bg {
+      position: fixed;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: 0;
+      top: 0; left: 0;
+      filter: blur(2px) brightness(0.7);
+      pointer-events: none;
+    }
+    #gameCanvas {
+      position: fixed;
+      left: 0; top: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      background: transparent;
+      display: block;
+    }
+    #scoreBox {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2;
+      background: rgba(255,255,255,0.85);
+      color: #222;
+      border-radius: 22px;
+      padding: 14px 38px;
+      font-size: 2rem;
+      font-weight: bold;
+      box-shadow: 0 2px 32px #0005;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #scoreBox img { width: 38px; height: 38px; }
+    #highscoreBox {
+      position: fixed;
+      top: 28px;
+      right: 38px;
+      z-index: 2;
+      color: #fff;
+      font-size: 1rem;
+      background: rgba(0,0,0,0.4);
+      border-radius: 14px;
+      padding: 7px 16px;
+      box-shadow: 0 2px 8px #0005;
+    }
+    #overlay {
+      position: fixed;
+      z-index: 10;
+      left: 0; top: 0;
+      width: 100vw; height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 28px;
+      /* Додаємо фон через псевдоелемент */
+    }
+    #overlay::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.62);
+      backdrop-filter: blur(4px);
+      z-index: -1;
+    }
+    #gameTitle {
+      color: #fff;
+      font-size: 3.2rem;
+      font-weight: 900;
+      text-shadow: 0 4px 32px #000b, 0 2px 0 #fff3;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      justify-content: center;
+      animation: bounce 1s infinite alternate;
+      user-select: none;
+    }
+    #gameTitle .emoji {
+      font-size: 2.5rem;
+      filter: drop-shadow(0 2px 8px #0008);
+    }
+    #nicknameBlock {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      width: 100%;
+    }
+    #nicknameInputMain {
+      font-size: 1.25rem;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1.5px solid #bbb;
+      outline: none;
+      width: 100%;
+      max-width: 320px;
+      box-shadow: 0 2px 12px #0002;
+      background: rgba(255,255,255,0.92);
+      transition: border .18s, box-shadow .18s;
+    }
+    #nicknameInputMain:focus {
+      border: 1.5px solid #2a7b3f;
+      box-shadow: 0 2px 18px #2a7b3f33;
+    }
+    #nicknameCurrent {
+      font-size: 1.05rem;
+      color: #2a7b3f;
+      margin-top: -2px;
+      margin-bottom: 2px;
+    }
+    #startBtn {
+      padding: 16px 48px;
+      font-size: 1.35rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 18px;
+      background: linear-gradient(90deg, #ffe55a 0%, gold 100%);
+      color: #333;
+      cursor: pointer;
+      box-shadow: 0 4px 24px #0007;
+      transition: background .18s, transform .12s;
+      margin-top: 18px;
+      margin-bottom: 10px;
+    }
+    #startBtn:hover { background: #fff36a; transform: scale(1.045); }
+    #gameDesc {
+      color: #fff;
+      font-size: 1.25rem;
+      text-align: center;
+      margin-top: 10px;
+      line-height: 1.6;
+      max-width: 420px;
+      text-shadow: 0 2px 12px #000a;
+      background: rgba(0,0,0,0.18);
+      border-radius: 12px;
+      padding: 12px 18px 10px 18px;
+      user-select: none;
+    }
+    @keyframes bounce { to { transform: translateY(-12px); } }
+    #overlayText {
+      color: #fff;
+      font-size: 1.3rem;
+      text-align: center;
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+    #nicknameBlock label {
+      color: #fff;
+      font-weight: bold;
+      font-size: 1.15rem;
+      margin-bottom: 2px;
+    }
+  </style>
+</head>
+<body tabindex="0" style="margin:0;padding:0;">
+  <!-- Відео-фон для стартового екрану -->
+  <video id="startBgVideo" src="background.mp4" autoplay loop muted playsinline style="position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover;z-index:0;display:block;"></video>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100vw;height:100vh;">
+    <canvas id="gameCanvas"></canvas>
+    <div id="scoreBox" style="display:none;align-items:center;gap:18px;">
+      <span id="statTime">00:00</span>
+      <span style="margin: 0 12px;">|</span>
+      <img id="acornIcon" src="acorns.webp" alt="acorn" style="width:32px;height:32px;vertical-align:middle;">
+      <span id="score">0</span>
+      <span style="margin: 0 12px;">|</span>
+      <span>Record: <span id="highscore">0</span></span>
+    </div>
+    <div id="overlay">
+      <div id="gameTitle"><span class="emoji">🦌</span> Flappy Moose: Stump Dodge <span class="emoji">🌲</span></div>
+      <div id="gameOverBlock" style="display:none;text-align:center;color:#fff;margin-bottom:10px;">
+        <div id="gameOverText" style="font-size:1.5rem;font-weight:bold;"></div>
+        <div id="gameOverScore" style="font-size:1.2rem;margin:8px 0 0 0;"></div>
+      </div>
+      <label for="nicknameInputMain" style="font-weight:bold;font-size:1.1rem;margin-top:18px;color:#fff;">Nickname:</label>
+      <input id="nicknameInputMain" type="text" maxlength="16" placeholder="Enter your nickname" style="font-size:1.1rem;padding:10px 18px;border-radius:10px;border:1.5px solid #bbb;outline:none;width:100%;max-width:260px;margin-top:6px;">
+      <div id="nicknameCurrent" style="font-size:1.05rem;color:#2a7b3f;margin-bottom:2px;">Current: Player</div>
+      <button id="startBtn">Start</button>
+      <div id="gameDesc">
+        Jump on stumps, collect acorns, avoid falling!<br>
+        <b>How long can you survive?</b><br>
+        <span style="font-size:1.05rem;color:#ffe55a;">The speed increases every second!</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Coursera assignment: Physics fix & robust spacebar jump
+    // 1. Moose always lands on platform (vy=0, y snap)
+    // 2. Spacebar jump works in all browsers (body focusable, window keydown, e.code support)
+    // ========== SETTINGS ==========
+    const MOOSE_W = 90, MOOSE_H = 90; // збільшено лося
+    const GRAVITY = 0.09; // трохи більша гравітація для більших об'єктів
+    const FLAP = -7; // сильніший стрибок
+    const PIPE_W = 60, PIPE_GAP = 380;
+    const PIPE_SPEED = 2.2;
+    let gameStarted = false, gameOver = false;
+    let score = 0;
+    let highscore = Number(localStorage.getItem('flappy_moose_highscore')) || 0;
+    let nickname = '';
+    let moose = null, pipes = [], acorns = [], animId = 0, lastPipeTime = 0;
+    let W=window.innerWidth, H=window.innerHeight;
+    let clouds = [];
+    let lastAcornTime = 0;
+    let platformOffset = 0;
+    const RUN_SPEED = 3.2;
+    const PLATFORM_HEIGHT = 180; // трохи менша платформа для кращого вигляду
+    let mooseStep = 0;
+    const PLATFORM_TOP_OFFSET = 70// скільки пікселів від верху картинки до трави
+    let gameStartTime = 0;
+
+    // Додаю масив платформ
+    let platforms = [];
+    const PLATFORM_MIN_Y = 120;
+    const PLATFORM_MAX_Y = 320;
+    // Замість const PLATFORM_WIDTH і PLATFORM_GAP — let, щоб змінювати під час гри
+    let platformWidth = 600;
+    let platformGap = 200;
+    const PLATFORM_WIDTH_START = 600;
+    const PLATFORM_WIDTH_MIN = 260;
+    const PLATFORM_GAP_START = 200;
+    const PLATFORM_GAP_MAX = 420;
+
+    // ========== LOAD IMAGES ==========
+    const mooseImg = new Image();
+    mooseImg.src = "moose.webp";
+    const acornImg = new Image();
+    acornImg.src = "acorns.webp";
+    const platformImg = new Image();
+    platformImg.src = "platform.webp";
+    const bgImg = new Image();
+    bgImg.src = "background.webp";
+    // Додаю ще один Image для паралакс-фону
+    const parallaxBgImg = new Image();
+    parallaxBgImg.src = "background.webp";
+
+    // ========== DOM ==========
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreBox = document.getElementById('scoreBox');
+    const scoreSpan = document.getElementById('score');
+    const highscoreBox = document.getElementById('highscoreBox');
+    const highscoreSpan = document.getElementById('highscore');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const overlayText = document.getElementById('overlayText');
+    const nicknameInput = document.getElementById('nicknameInput');
+    const startBgVideo = document.getElementById('startBgVideo');
+    const smallInstruction = document.getElementById('smallInstruction');
+    function resize() {
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = W; canvas.height = H;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ========== GAME OBJECTS ==========
+    function resetGame() {
+      moose = {
+        x: W*0.15,
+        y: 0, // буде виставлено на платформу
+        vy: 0,
+        alive: true
+      };
+      acorns = [];
+      clouds = [];
+      platformOffset = 0;
+      mooseStep = 0;
+      platforms = [];
+      // Скидаємо складність
+      platformWidth = PLATFORM_WIDTH_START;
+      platformGap = PLATFORM_GAP_START;
+      // Створюємо стартові платформи
+      let px = 0;
+      for (let i = 0; px < W + 2*platformWidth; i++) {
+        let py = i % 2 === 0 ? H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET : H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET-100-Math.random()*100;
+        platforms.push({x: px, y: py});
+        px += platformWidth + platformGap;
+      }
+      // Ставимо лося на першу платформу
+      moose.y = platforms[0].y - MOOSE_H + 80;
+      score = 0;
+      gameOver = false;
+      scoreBox.style.display = '';
+      // highscoreBox.style.display = '';
+      scoreSpan.textContent = score;
+      highscoreSpan.textContent = highscore;
+    }
+
+    // Додаю spawnPlatform для динамічного додавання платформ справа
+    function spawnPlatform() {
+      // Остання платформа
+      const last = platforms[platforms.length-1];
+      let px = last.x + (last.width || platformWidth) + platformGap;
+      // Випадкова висота (чергування, як у resetGame)
+      let minY = H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET-120;
+      let maxY = H-PLATFORM_HEIGHT+PLATFORM_TOP_OFFSET;
+      let py = minY + Math.random() * (maxY - minY);
+      // Випадкова ширина (але не менше PLATFORM_WIDTH_MIN)
+      let w = Math.max(PLATFORM_WIDTH_MIN, platformWidth * (0.7 + Math.random()*0.5));
+      platforms.push({x: px, y: py, width: w});
+    }
+
+    // ========== SPAWNERS ==========
+    function spawnAcorn() {
+      // Вибираємо платформу, яка ще не видна гравцю (x > W)
+      let candidates = platforms.filter(p => p.x > W);
+      if (candidates.length === 0) return;
+      let p = candidates[Math.floor(Math.random()*candidates.length)];
+      let y = p.y - 60; // вище платформи
+      acorns.push({
+        x: p.x + 60 + Math.random()*((p.width || platformWidth)-120),
+        y: y,
+        w: 70, // збільшено жолудь
+        h: 70,
+        collected: false
+      });
+    }
+
+    // ========== DRAW ==========
+    function drawBg() {
+      // Паралакс-фон (рухається повільніше)
+      let t = (Date.now() - gameStartTime) / 1000;
+      let parallaxX = -((t*0.5)%1) * W; // дуже повільний рух
+      ctx.globalAlpha = 0.7;
+      ctx.drawImage(parallaxBgImg, parallaxX, 0, W, H);
+      ctx.drawImage(parallaxBgImg, parallaxX+W, 0, W, H); // seamless
+      ctx.globalAlpha = 1;
+      // Основний фон
+      ctx.drawImage(bgImg, 0, 0, W, H);
+      // Малюємо всі платформи
+      for (let p of platforms) {
+        ctx.drawImage(platformImg, p.x, p.y, p.width || platformWidth, PLATFORM_HEIGHT);
+      }
+      // Хмарки
+      for (let c of clouds) {
+        ctx.save();
+        ctx.globalAlpha = c.opacity;
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, c.w, c.h, 0, 0, 2*Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.restore();
+      }
+      // Зміна часу доби: накладаємо напівпрозорий шар
+      let dayPhase = 0.5 + 0.5 * Math.sin(t/22); // від 0 до 1
+      // Від блакитного до темно-синього
+      let r = Math.round(60 + 40*dayPhase);
+      let g = Math.round(120 + 60*dayPhase);
+      let b = Math.round(200 + 40*dayPhase);
+      ctx.fillStyle = `rgba(${r},${g},${b},0.22)`;
+      ctx.fillRect(0,0,W,H);
+    }
+    function drawMoose() {
+      ctx.save();
+      ctx.translate(moose.x + MOOSE_W/2, moose.y + MOOSE_H/2);
+      // Прибрано похитування (анімацію бігу)
+      ctx.rotate(Math.max(-0.5, Math.min(0.5, moose.vy/18)));
+      ctx.drawImage(mooseImg, -MOOSE_W/2, -MOOSE_H/2, MOOSE_W, MOOSE_H);
+      ctx.restore();
+    }
+    function drawAcorns() {
+      for (let a of acorns) {
+        if (!a.collected) ctx.drawImage(acornImg, a.x, a.y, a.w, a.h);
+      }
+    }
+    function draw() {
+      drawBg();
+      drawAcorns();
+      drawMoose();
+    }
+
+    // ========== GAME LOOP ==========
+    function update() {
+      // Moose physics
+      let onPlatform = false;
+      let platformY = null;
+      for (let p of platforms) {
+        // Суворіша перевірка по x: тільки якщо "ноги" лося реально на платформі
+        if (
+          moose.x + MOOSE_W*0.8 > p.x + 20 && moose.x + MOOSE_W*0.2 < p.x + (p.width || platformWidth) - 20 &&
+          moose.y + MOOSE_H >= p.y && moose.y + MOOSE_H <= p.y + 120 &&
+          moose.vy >= 0
+        ) {
+          onPlatform = true;
+          platformY = p.y;
+          break;
+        }
+      }
+      if (!onPlatform) {
+        moose.y += moose.vy;
+        moose.vy += GRAVITY;
+      } else {
+        moose.vy = 0;
+        // Плавне приземлення
+        moose.y += (platformY - MOOSE_H + 80 -moose.y) * 0.5;
+      }
+      // Додаю перевірку програшу
+      if (!onPlatform && moose.y > H && !gameOver) {
+        gameOver = true;
+        gameStarted = false;
+        showOverlay(true);
+        return;
+      }
+      // Динамічна складність: RUN_SPEED зростає з часом
+      let seconds = Math.floor((Date.now() - gameStartTime) / 1000);
+      let speed = 3.2 + Math.min(2, seconds * 0.04); // максимум +2 до швидкості
+      for (let p of platforms) p.x -= speed;
+      for (let a of acorns) {
+        a.x -= speed;
+        if (!a.collected &&
+          moose.x + MOOSE_W > a.x && moose.x < a.x + a.w &&
+          moose.y + MOOSE_H > a.y && moose.y < a.y + a.h) {
+          a.collected = true;
+          score++;
+          scoreSpan.textContent = score;
+          // Оновлюємо рекорд
+          if (score > highscore) {
+            highscore = score;
+            highscoreSpan.textContent = highscore;
+            localStorage.setItem('flappy_moose_highscore', highscore);
+          }
+        }
+      }
+      // Видалити старі жолуді
+      acorns = acorns.filter(a => a.x > -a.w || !a.collected);
+
+      // ====== Додаю нескінченну генерацію платформ =====
+      // Якщо остання платформа правіше екрана менше ніж на 1 платформу — додаємо нову
+      while (platforms.length && (platforms[platforms.length-1].x < W + (platforms[platforms.length-1].width || platformWidth))) {
+        spawnPlatform();
+      }
+      // Видаляємо старі платформи, які повністю вийшли за лівий край
+      while (platforms.length && platforms[0].x < -(platforms[0].width || platformWidth)) {
+        platforms.shift();
+      }
+      // === Динамічна складність ===
+      // Зменшуємо ширину платформи і збільшуємо gap з часом (або з очками)
+      let t = Math.floor((Date.now() - gameStartTime) / 1000);
+      let wave = 0.5 + 0.5 * Math.sin(t/18); // хвиля від 0 до 1
+      platformWidth = Math.max(
+        PLATFORM_WIDTH_MIN,
+        PLATFORM_WIDTH_START - t*6*wave - score*1.5*wave
+      );
+      // Обмежуємо platformGap максимальною досяжною відстанню
+      let maxGap = Math.min(getMaxJumpDistance(), PLATFORM_GAP_MAX);
+      platformGap = Math.min(
+        maxGap,
+        PLATFORM_GAP_START + t*3*wave + score*1.2*wave
+      );
+    }
+    function getMaxJumpDistance() {
+      // t_flight = 2 * |FLAP| / GRAVITY
+      // maxDist = t_flight * speed (speed залежить від часу)
+      let vy0 = Math.abs(FLAP);
+      let t_flight = 2 * vy0 / GRAVITY;
+      // Беремо максимальну швидкість (наприклад, 5.2)
+      let maxSpeed = 5.2;
+      return t_flight * maxSpeed * 0.8; // 80% від максимальної відстані
+    }
+    function updateStats() {
+      // Оновлюємо час
+      const now = Date.now();
+      let sec = Math.floor((now - gameStartTime)/1000);
+      let min = Math.floor(sec/60);
+      sec = sec%60;
+      document.getElementById('statTime').textContent = `${min.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+      // Оновлюємо рахунок і highscore (вже оновлюється в інших місцях, але для надійності)
+      document.getElementById('score').textContent = score;
+      document.getElementById('highscore').textContent = highscore;
+    }
+    function gameLoop(ts) {
+      // Гра малюється завжди, але оновлення лише якщо активна
+      if (gameStarted && !gameOver) {
+        // Спавн жолудя раз на 1.2-2.2 секунди
+        if (!lastAcornTime || ts - lastAcornTime > 1200 + Math.random()*1000) {
+          spawnAcorn();
+          lastAcornTime = ts;
+        }
+        update();
+      }
+      draw();
+      updateStats();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ========== CONTROLS ==========
+    function flap() {
+      if(!gameStarted || gameOver) return;
+      // Можна стрибати тільки якщо лось на платформі
+      let onPlatform = false;
+      for (let p of platforms) {
+        if (
+          moose.x + MOOSE_W*0.8 > p.x + 20 && moose.x + MOOSE_W*0.2 < p.x + (p.width || platformWidth) - 20 &&
+          moose.y + MOOSE_H >= p.y && moose.y + MOOSE_H <= p.y + 120
+        ) {
+          onPlatform = true;
+          break;
+        }
+      }
+      if (onPlatform) {
+        moose.vy = FLAP;
+        console.log('FLAP!');
+      }
+    }
+    // більш надійна обробка Space і стрілки вгору
+    document.addEventListener('keydown', function(e) {
+      console.log('keydown', e.key, e.code, e.keyCode, document.activeElement);
+      // keyCode 32 — це пробіл; додано 'Spacebar' для старих браузерів
+      if (
+        e.keyCode === 32 ||
+        e.code === 'Space' ||
+        e.code === 'Spacebar' ||
+        e.key === ' ' ||
+        e.key === 'ArrowUp'
+      ) {
+        e.preventDefault();
+        if (gameOver) {
+          startBtn.click();
+        } else if (gameStarted) {
+          flap();
+        }
+      }
+    });
+    canvas.addEventListener('mousedown', function(e) {
+      if (gameOver) {
+        startBtn.click();
+      } else if (gameStarted) {
+        flap();
+      }
+    });
+    canvas.addEventListener('touchstart', function(e) {
+      if (gameOver) {
+        startBtn.click();
+      } else if (gameStarted) {
+        flap();
+      }
+    });
+
+    // ========== OVERLAY ==========
+    // Nickname sync logic
+    const nicknameInputMain = document.getElementById('nicknameInputMain');
+    const nicknameCurrent = document.getElementById('nicknameCurrent');
+    const gameOverBlock = document.getElementById('gameOverBlock');
+    const gameOverText = document.getElementById('gameOverText');
+    const gameOverScore = document.getElementById('gameOverScore');
+    nicknameInputMain.value = nickname;
+    nicknameCurrent.textContent = nickname || 'Player';
+    nicknameInputMain.addEventListener('input', function() {
+      nickname = nicknameInputMain.value.trim();
+      nicknameCurrent.textContent = nickname || 'Player';
+    });
+
+    function showOverlay(isGameOver) {
+      overlay.style.display = '';
+      if (isGameOver) {
+        gameOverBlock.style.display = '';
+        gameOverText.innerHTML = 'Game over!';
+        gameOverScore.innerHTML = `Score: <b style="color:gold">${score}</b><br>Player: <b>${nickname || 'Player'}</b>`;
+        startBtn.textContent = 'Restart';
+        document.getElementById('gameDesc').style.display = 'none';
+      } else {
+        gameOverBlock.style.display = 'none';
+        startBtn.textContent = 'Start';
+        document.getElementById('gameDesc').style.display = '';
+      }
+    }
+    function hideOverlay() {
+      overlay.style.display = 'none';
+    }
+
+    startBtn.onclick = () => {
+      nickname = nicknameInputMain.value.trim();
+      if (!nickname) {
+        nicknameInputMain.style.background = '#ffe0e0';
+        return;
+      }
+      nicknameInputMain.style.background = '';
+      nicknameInputMain.value = nickname;
+      nicknameCurrent.textContent = nickname || 'Player';
+      highscore = Number(localStorage.getItem('flappy_moose_highscore')) || 0;
+      resetGame();
+      hideOverlay();
+      gameStarted = true;
+      gameOver = false;
+      lastAcornTime = 0;
+      gameStartTime = Date.now();
+      document.activeElement.blur();
+      document.body.focus();
+    };
+
+    resetGame();
+    showOverlay(false);
+    requestAnimationFrame(gameLoop);
+
+    window.addEventListener('resize', () => {
+      if(!gameStarted) draw();
+    });
+
+    // Запускаємо цикл анімації один раз при завантаженні
+    // requestAnimationFrame(gameLoop); // This line is now handled by the new_code
+  </script>
+</body>
+</html>
