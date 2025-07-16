@@ -206,8 +206,8 @@
   <script>
     // Game settings
     const MOOSE_W = 90, MOOSE_H = 90;
-    const GRAVITY = 0.09;
-    const FLAP = -7;
+    const GRAVITY = 0.04; 
+    const FLAP = -5.5; 
     const PIPE_W = 60, PIPE_GAP = 380;
     const PIPE_SPEED = 2.2;
     let gameStarted = false, gameOver = false;
@@ -223,6 +223,8 @@
     let mooseStep = 0;
     const PLATFORM_TOP_OFFSET = 70
     let gameStartTime = 0;
+    let lastJumpTime = 0;
+    const JUMP_COOLDOWN = 300;
 
     // Platform system
     let platforms = [];
@@ -288,6 +290,7 @@
       platforms = [];
       platformWidth = PLATFORM_WIDTH_START;
       platformGap = PLATFORM_GAP_START;
+      lastJumpTime = 0; // Reset jump cooldown
       
       let py = H - PLATFORM_HEIGHT - 40;
       for (let i = 0; py > -platformGap * 3; i++) {
@@ -813,9 +816,24 @@
     function flap() {
       console.log('flap() called, gameStarted:', gameStarted, 'gameOver:', gameOver, 'onPlatform:', moose?.onPlatform);
       if(!gameStarted || gameOver) return;
+      
+      // Check jump cooldown and platform requirement
+      const now = Date.now();
+      if (now - lastJumpTime < JUMP_COOLDOWN) {
+        console.log('Jump on cooldown, ignoring');
+        return;
+      }
+      
+      // Only allow jumping when on platform
+      if (!moose.onPlatform) {
+        console.log('Not on platform, cannot jump');
+        return;
+      }
+      
       moose.vy = FLAP;
       moose.justJumped = true;
-      console.log('FLAP! vy set to:', FLAP, 'justJumped:', true);
+      lastJumpTime = now;
+      console.log('FLAP! vy set to:', FLAP, 'justJumped:', true, 'cooldown until:', now + JUMP_COOLDOWN);
     }
     let leftPressed = false, rightPressed = false;
 
